@@ -444,3 +444,55 @@ QToolTip {
     padding: 5px 8px;
     font-size: 12px;
 }
+
+
+/* =========================================================
+   RADIO BUTTONS
+   ========================================================= */
+
+QRadioButton {
+    color: #374151;
+    spacing: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 3px 0;
+}
+
+QRadioButton:hover {
+    color: #111827;
+}
+
+QRadioButton:disabled {
+    color: #9aa1ac;
+}
+
+QRadioButton::indicator {
+    width: 17px;
+    height: 17px;
+}
+
+QRadioButton::indicator:unchecked {
+    background-color: #ffffff;
+    border: 1px solid #c7cdd6;
+    border-radius: 9px;
+}
+
+QRadioButton::indicator:unchecked:hover {
+    border: 1px solid #9aa5b5;
+}
+
+QRadioButton::indicator:checked {
+    background-color: #2563eb;
+    border: 1px solid #2563eb;
+    border-radius: 9px;
+}
+
+QRadioButton::indicator:checked:hover {
+    background-color: #1d4ed8;
+    border: 1px solid #1d4ed8;
+}
+
+QRadioButton::indicator:disabled {
+    background-color: #f0f1f3;
+    border: 1px solid #d9dde3;
+}

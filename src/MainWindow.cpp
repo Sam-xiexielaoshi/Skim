@@ -4,6 +4,9 @@
 #include <QApplication>
 #include <QKeyEvent>
 #include <QFile>
+#include <QSettings>
+#include <QStandardPaths>
+#include <QAbstractItemView>
 
 #include <QCheckBox>
 #include <QDialog>
@@ -215,7 +218,7 @@ MainWindow::MainWindow(QWidget *parent)
         this,
         &MainWindow::cancelExtraction);
 
-    connect(
+        connect(
         exitAction,
         &QAction::triggered,
         this,
@@ -931,6 +934,111 @@ MainWindow::MainWindow(QWidget *parent)
         &MainWindow::cancelExtraction);
 
     // =====================================================
+    // RESTORE USER PREFERENCES
+    // =====================================================
+
+    QSettings settings("DocumentExtractor", "DocumentExtractor");
+
+    const QString savedScanPath =
+        settings.value("scanPath").toString();
+
+    const QString savedOutputPath =
+        settings.value("outputPath").toString();
+
+    if (!savedScanPath.isEmpty())
+    {
+        folderEdit->setText(savedScanPath);
+    }
+
+    if (!savedOutputPath.isEmpty())
+    {
+        outputEdit->setText(savedOutputPath);
+    }
+
+    wordCheckBox->setChecked(
+        settings.value("scanWord", true).toBool());
+
+    textCheckBox->setChecked(
+        settings.value("scanText", true).toBool());
+
+    pdfCheckBox->setChecked(
+        settings.value("scanPdf", true).toBool());
+
+    subfoldersCheckBox->setChecked(
+        settings.value("includeSubfolders", true).toBool());
+
+    if (settings.value("singleFileMode", false).toBool())
+    {
+        singleFileModeRadio->setChecked(true);
+    }
+
+    if (settings.contains("windowPosition"))
+    {
+        move(settings.value("windowPosition").toPoint());
+    }
+
+    // =====================================================
+    // TOOLTIPS
+    // =====================================================
+
+    folderModeRadio->setToolTip(
+        "Scan all supported documents in a folder.");
+
+    singleFileModeRadio->setToolTip(
+        "Scan one document only.");
+
+    folderEdit->setToolTip(
+        "Folder or document selected for scanning.");
+
+    browseFolderButton->setToolTip(
+        "Choose the scan folder or document.");
+
+    searchEdit->setToolTip(
+        "Text is matched case-insensitively.");
+
+    outputEdit->setToolTip(
+        "Text file where matching content will be written.");
+
+    browseOutputButton->setToolTip(
+        "Choose where the extracted results will be saved.");
+
+    wordCheckBox->setToolTip(
+        "Include .doc and .docx files.");
+
+    textCheckBox->setToolTip(
+        "Include .txt files.");
+
+    pdfCheckBox->setToolTip(
+        "Include text-based .pdf files.");
+
+    subfoldersCheckBox->setToolTip(
+        "Include supported documents in nested folders.");
+
+    startButton->setToolTip(
+        "Start extraction (Ctrl+Enter).");
+
+    cancelButton->setToolTip(
+        "Cancel after the current document is safely finished (Esc).");
+
+    // =====================================================
+    // KEYBOARD TAB ORDER
+    // =====================================================
+
+    setTabOrder(folderModeRadio, singleFileModeRadio);
+    setTabOrder(singleFileModeRadio, folderEdit);
+    setTabOrder(folderEdit, browseFolderButton);
+    setTabOrder(browseFolderButton, searchEdit);
+    setTabOrder(searchEdit, outputEdit);
+    setTabOrder(outputEdit, browseOutputButton);
+    setTabOrder(browseOutputButton, wordCheckBox);
+    setTabOrder(wordCheckBox, textCheckBox);
+    setTabOrder(textCheckBox, pdfCheckBox);
+    setTabOrder(pdfCheckBox, subfoldersCheckBox);
+    setTabOrder(subfoldersCheckBox, startButton);
+    setTabOrder(startButton, cancelButton);
+    setTabOrder(cancelButton, logTextEdit);
+
+    // =====================================================
     // LOAD APPLICATION STYLE
     // =====================================================
 
@@ -953,6 +1061,7 @@ MainWindow::MainWindow(QWidget *parent)
     // =====================================================
 
     qApp->installEventFilter(this);
+
 }
 
 // =========================================================
@@ -970,6 +1079,17 @@ MainWindow::~MainWindow()
     {
         workerThread->wait();
     }
+
+    QSettings settings("DocumentExtractor", "DocumentExtractor");
+
+    settings.setValue("scanPath", folderEdit->text().trimmed());
+    settings.setValue("outputPath", outputEdit->text().trimmed());
+    settings.setValue("scanWord", wordCheckBox->isChecked());
+    settings.setValue("scanText", textCheckBox->isChecked());
+    settings.setValue("scanPdf", pdfCheckBox->isChecked());
+    settings.setValue("includeSubfolders", subfoldersCheckBox->isChecked());
+    settings.setValue("singleFileMode", singleFileModeRadio->isChecked());
+    settings.setValue("windowPosition", pos());
 }
 
 // =========================================================
@@ -992,7 +1112,7 @@ void MainWindow::setExtractionUiLocked(bool locked)
     textCheckBox->setEnabled(!locked);
     pdfCheckBox->setEnabled(!locked);
     subfoldersCheckBox->setEnabled(!locked &&
-                                   folderModeRadio->isChecked());
+                                    folderModeRadio->isChecked());
 
     startButton->setEnabled(!locked);
     cancelButton->setEnabled(locked);
@@ -1153,8 +1273,13 @@ void MainWindow::startExtraction()
     {
         QMessageBox::warning(
             this,
-            "Missing Folder",
-            "Please select a folder to scan.");
+            scanMode == ScanMode::SingleFile
+                ? "Missing Document"
+                : "Missing Scan Folder",
+            scanMode == ScanMode::SingleFile
+                ? "Please select a document to scan.\n\n"
+                  "Supported formats: DOC, DOCX, TXT, PDF."
+                : "Please select a folder to scan.");
 
         return;
     }
@@ -1211,11 +1336,11 @@ void MainWindow::startExtraction()
         const bool supported =
             (extension == "doc" || extension == "docx")
                 ? scanWord
-            : (extension == "txt")
-                ? scanText
-            : (extension == "pdf")
-                ? scanPdf
-                : false;
+                : (extension == "txt")
+                    ? scanText
+                    : (extension == "pdf")
+                        ? scanPdf
+                        : false;
 
         if (!supported)
         {
@@ -1260,7 +1385,7 @@ void MainWindow::startExtraction()
         QMessageBox::warning(
             this,
             "Missing Search Text",
-            "Please enter text to search for.");
+            "Please enter the text you want to find in the selected documents.");
 
         return;
     }
@@ -1270,7 +1395,8 @@ void MainWindow::startExtraction()
         QMessageBox::warning(
             this,
             "Missing Output File",
-            "Please select an output file.");
+            "Please choose where the extracted results should be saved.\n\n"
+            "Example: C:/Documents/ExtractedText.txt");
 
         return;
     }
@@ -1322,17 +1448,8 @@ void MainWindow::startExtraction()
             this,
             "Output File Not Writable",
             "The selected output file cannot be modified.\n\n"
-            "It may be read-only or currently in use.");
-
-        return;
-    }
-
-    if (!outputInfo.exists() && !outputDirectory.isReadable())
-    {
-        QMessageBox::warning(
-            this,
-            "Output Folder Not Writable",
-            "The output folder cannot be used for creating the output file.");
+            "It may be read-only or currently in use by another application.\n\n"
+            "Close any application using the file and try again.");
 
         return;
     }
@@ -1364,8 +1481,9 @@ void MainWindow::startExtraction()
     {
         QMessageBox::warning(
             this,
-            "No File Type",
-            "Please select at least one file type.");
+            "No File Types Selected",
+            "Please select at least one document type to scan.\n\n"
+            "Available types: Word, TXT, and PDF.");
 
         return;
     }
@@ -1721,8 +1839,43 @@ void MainWindow::updateStatus(
 void MainWindow::appendLog(
     const QString &message)
 {
+    QString escaped =
+        message.toHtmlEscaped();
+
+    QString formatted =
+        "<span>" + escaped + "</span>";
+
+    if (message.startsWith("Scanning:"))
+    {
+        formatted =
+            "<span style='color:#2563eb;'>" +
+            escaped +
+            "</span>";
+    }
+    else if (message.startsWith("Completed:"))
+    {
+        formatted =
+            "<span style='color:#15803d;'>" +
+            escaped +
+            "</span>";
+    }
+    else if (message.startsWith("Skipped"))
+    {
+        formatted =
+            "<span style='color:#a16207;'>" +
+            escaped +
+            "</span>";
+    }
+    else if (message.startsWith("FAILED:"))
+    {
+        formatted =
+            "<span style='color:#dc2626;'>" +
+            escaped +
+            "</span>";
+    }
+
     logTextEdit->append(
-        message);
+        formatted);
 
     logTextEdit->ensureCursorVisible();
 }
@@ -1755,7 +1908,7 @@ void MainWindow::extractionFinished(
     dialog.setWindowTitle("Extraction Complete");
     dialog.setWindowIcon(
         QIcon(":/DocumentExtractor_256.png"));
-    dialog.setFixedSize(560, 470);
+    dialog.setFixedSize(640, 470);
 
     QVBoxLayout *layout =
         new QVBoxLayout(&dialog);
@@ -1785,7 +1938,10 @@ void MainWindow::extractionFinished(
     layout->addWidget(iconLabel);
 
     QLabel *titleLabel =
-        new QLabel("Extraction Complete");
+        new QLabel(
+            failedFiles > 0
+                ? "Extraction Completed with Errors"
+                : "Extraction Complete");
 
     titleLabel->setObjectName(
         "completionTitleLabel");
@@ -1815,7 +1971,11 @@ void MainWindow::extractionFinished(
     else
     {
         completionSubtitle =
-            "Extraction finished with some files that could not be processed.";
+            QString(
+                "Extraction completed, but %1 file%2 could not be processed. "
+                "See the failed-files list below for details.")
+                .arg(failedFiles)
+                .arg(failedFiles == 1 ? " was" : "s were");
     }
 
     QLabel *subtitleLabel =
@@ -1850,32 +2010,32 @@ void MainWindow::extractionFinished(
             int row,
             const QString &label,
             const QString &value)
-    {
-        QLabel *labelWidget =
-            new QLabel(label);
+        {
+            QLabel *labelWidget =
+                new QLabel(label);
 
-        labelWidget->setObjectName(
-            "completionStatLabel");
+            labelWidget->setObjectName(
+                "completionStatLabel");
 
-        QLabel *valueWidget =
-            new QLabel(value);
+            QLabel *valueWidget =
+                new QLabel(value);
 
-        valueWidget->setObjectName(
-            "completionStatValue");
+            valueWidget->setObjectName(
+                "completionStatValue");
 
-        valueWidget->setAlignment(
-            Qt::AlignRight);
+            valueWidget->setAlignment(
+                Qt::AlignRight);
 
-        statsLayout->addWidget(
-            labelWidget,
-            row,
-            0);
+            statsLayout->addWidget(
+                labelWidget,
+                row,
+                0);
 
-        statsLayout->addWidget(
-            valueWidget,
-            row,
-            1);
-    };
+            statsLayout->addWidget(
+                valueWidget,
+                row,
+                1);
+        };
 
     addStat(0, "Files found", QString::number(filesFound));
     addStat(1, "Files scanned", QString::number(filesScanned));
@@ -1922,6 +2082,13 @@ void MainWindow::extractionFinished(
 
     buttonLayout->setSpacing(10);
 
+    QPushButton *openOutputButton =
+        new QPushButton(
+            "Open Output");
+
+    openOutputButton->setObjectName(
+        "completionPrimaryButton");
+
     QPushButton *openFolderButton =
         new QPushButton(
             "Open Output Folder");
@@ -1936,6 +2103,9 @@ void MainWindow::extractionFinished(
         "completionPrimaryButton");
 
     buttonLayout->addWidget(
+        openOutputButton);
+
+    buttonLayout->addWidget(
         openFolderButton);
 
     buttonLayout->addStretch();
@@ -1945,6 +2115,35 @@ void MainWindow::extractionFinished(
 
     layout->addLayout(
         buttonLayout);
+
+    connect(
+        openOutputButton,
+        &QPushButton::clicked,
+        this,
+        [this]()
+        {
+            const QString outputPath =
+                outputEdit->text().trimmed();
+
+            if (outputPath.isEmpty())
+            {
+                return;
+            }
+
+            const QFileInfo outputInfo(outputPath);
+
+            if (!outputInfo.exists())
+            {
+                QMessageBox::warning(
+                    this,
+                    "Output Not Found",
+                    "The output file could not be found.");
+                return;
+            }
+
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile(outputInfo.absoluteFilePath()));
+        });
 
     connect(
         openFolderButton,
@@ -1960,12 +2159,10 @@ void MainWindow::extractionFinished(
                 return;
             }
 
-            const QFileInfo outputInfo(
-                outputPath);
+            const QFileInfo outputInfo(outputPath);
 
             QDesktopServices::openUrl(
-                QUrl::fromLocalFile(
-                    outputInfo.absolutePath()));
+                QUrl::fromLocalFile(outputInfo.absolutePath()));
         });
 
     connect(
@@ -2097,32 +2294,32 @@ void MainWindow::extractionCancelled(
             int row,
             const QString &label,
             const QString &value)
-    {
-        QLabel *labelWidget =
-            new QLabel(label);
+        {
+            QLabel *labelWidget =
+                new QLabel(label);
 
-        labelWidget->setObjectName(
-            "completionStatLabel");
+            labelWidget->setObjectName(
+                "completionStatLabel");
 
-        QLabel *valueWidget =
-            new QLabel(value);
+            QLabel *valueWidget =
+                new QLabel(value);
 
-        valueWidget->setObjectName(
-            "completionStatValue");
+            valueWidget->setObjectName(
+                "completionStatValue");
 
-        valueWidget->setAlignment(
-            Qt::AlignRight);
+            valueWidget->setAlignment(
+                Qt::AlignRight);
 
-        statsLayout->addWidget(
-            labelWidget,
-            row,
-            0);
+            statsLayout->addWidget(
+                labelWidget,
+                row,
+                0);
 
-        statsLayout->addWidget(
-            valueWidget,
-            row,
-            1);
-    };
+            statsLayout->addWidget(
+                valueWidget,
+                row,
+                1);
+        };
 
     addStat(0, "Files found", QString::number(filesFound));
     addStat(1, "Files scanned", QString::number(filesScanned));
@@ -2201,16 +2398,15 @@ void MainWindow::extractionError(
     const QString &errorMessage)
 {
     statusLabel->setText(
-        "Status: Error");
+        "Status: Error — " + errorMessage);
 
-    startButton->setEnabled(
-        true);
-
-    cancelButton->setEnabled(
-        false);
+    appendLog(
+        "FAILED: " + errorMessage);
 
     QMessageBox::critical(
         this,
         "Extraction Error",
-        errorMessage);
+        errorMessage +
+        "\n\nNo further files were processed.\n"
+        "Check the scan location, permissions, and selected options, then try again.");
 }
