@@ -50,7 +50,7 @@ MainWindow::MainWindow(QWidget *parent)
     // WINDOW
     // =====================================================
 
-    setWindowTitle("Document Extractor");
+    setWindowTitle("Skim");
 
     setWindowIcon(
         QIcon(":/DocumentExtractor_256.png"));
@@ -96,7 +96,7 @@ MainWindow::MainWindow(QWidget *parent)
         QSizePolicy::Fixed);
 
     QLabel *titleLabel =
-        new QLabel("Document Extractor");
+        new QLabel("Skim - Document Extractor");
 
     titleLabel->setObjectName(
         "titleLabel");
@@ -167,7 +167,7 @@ MainWindow::MainWindow(QWidget *parent)
         menuBar()->addMenu("Help");
 
     QAction *aboutAction =
-        new QAction("About Document Extractor", this);
+        new QAction("About Skim", this);
 
     QAction *aboutQtAction =
         new QAction("About Qt", this);
@@ -288,7 +288,7 @@ MainWindow::MainWindow(QWidget *parent)
             QDialog dialog(this);
 
             dialog.setWindowTitle(
-                "About Document Extractor");
+                "About Skim");
 
             dialog.setWindowIcon(
                 QIcon(":/DocumentExtractor_256.png"));
@@ -330,7 +330,7 @@ MainWindow::MainWindow(QWidget *parent)
 
             QLabel *identityText =
                 new QLabel(
-                    "<b>Document Extractor</b><br>"
+                    "<b>Skim</b><br>"
                     "<span style='font-size:13px;'>Version 1.0.0</span>");
 
             identityText->setObjectName(
@@ -1012,7 +1012,7 @@ MainWindow::MainWindow(QWidget *parent)
     // RESTORE USER PREFERENCES
     // =====================================================
 
-    QSettings settings("DocumentExtractor", "DocumentExtractor");
+    QSettings settings("Skim", "Skim");
 
     const QString savedScanPath =
         settings.value("scanPath").toString();

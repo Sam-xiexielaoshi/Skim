@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(DocumentExtractor VERSION 1.0 LANGUAGES CXX)
+project(Skim VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,7 +23,7 @@ set_source_files_properties(
     QT_RESOURCE_ALIAS "DocumentExtractor.qss"
 )
 
-qt_add_executable(DocumentExtractor
+qt_add_executable(Skim
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MainWindow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MainWindow.h
@@ -53,7 +53,7 @@ set_source_files_properties(
     QT_RESOURCE_ALIAS "DocumentExtractor_256.png"
 )
 
-qt_add_resources(DocumentExtractor "app_resources"
+qt_add_resources(Skim "app_resources"
     PREFIX "/"
     FILES
         ${QSS_FILE}
@@ -61,12 +61,12 @@ qt_add_resources(DocumentExtractor "app_resources"
         ${APP_ICON_FILE}
 )
 
-target_link_libraries(DocumentExtractor PRIVATE
+target_link_libraries(Skim PRIVATE
     Qt6::Widgets
     Qt6::AxContainer
     Qt6::Pdf
 )
 
-set_target_properties(DocumentExtractor PROPERTIES
+set_target_properties(Skim PROPERTIES
     WIN32_EXECUTABLE ON
 )
