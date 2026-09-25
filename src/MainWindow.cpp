@@ -3,6 +3,8 @@
 
 #include <QApplication>
 #include <QKeyEvent>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFile>
 #include <QSettings>
 #include <QStandardPaths>
@@ -35,6 +37,7 @@
 #include <QKeySequence>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMimeData>
 
 // =========================================================
 // CONSTRUCTOR
@@ -106,7 +109,7 @@ MainWindow::MainWindow(QWidget *parent)
         menuBar()->addMenu("File");
 
     QAction *browseFolderAction =
-        new QAction("Browse Scan Location", this);
+        new QAction("Choose Scan Location...", this);
 
     browseFolderAction->setShortcut(
         QKeySequence("Ctrl+O"));
@@ -425,7 +428,7 @@ MainWindow::MainWindow(QWidget *parent)
         QSizePolicy::Expanding,
         QSizePolicy::Fixed);
 
-    locationCard->setMinimumHeight(94);
+    locationCard->setMinimumHeight(214);
 
     QVBoxLayout *locationLayout =
         new QVBoxLayout(locationCard);
@@ -453,7 +456,7 @@ MainWindow::MainWindow(QWidget *parent)
         new QRadioButton("Folder");
 
     singleFileModeRadio =
-        new QRadioButton("Single File");
+        new QRadioButton("Files");
 
     folderModeRadio->setChecked(true);
 
@@ -468,46 +471,107 @@ MainWindow::MainWindow(QWidget *parent)
     locationLayout->addLayout(
         modeLayout);
 
-    QHBoxLayout *folderLayout =
-        new QHBoxLayout();
+    // -----------------------------------------------------
+    // DROP ZONE
+    // -----------------------------------------------------
 
-    folderLayout->setSpacing(10);
+    dropZone =
+        new QFrame();
+
+    dropZone->setObjectName(
+        "dropZone");
+
+    dropZone->setAcceptDrops(true);
+
+    dropZone->setMinimumHeight(92);
+
+    dropZone->setSizePolicy(
+        QSizePolicy::Expanding,
+        QSizePolicy::Fixed);
+
+    dropZone->installEventFilter(this);
+
+    QHBoxLayout *dropZoneLayout =
+        new QHBoxLayout(dropZone);
+
+    dropZoneLayout->setContentsMargins(
+        18, 12, 18, 12);
+
+    dropZoneLayout->setSpacing(14);
+
+    QLabel *dropIconLabel =
+        new QLabel("⇩");
+
+    dropIconLabel->setObjectName(
+        "dropZoneIcon");
+
+    dropIconLabel->setAlignment(
+        Qt::AlignCenter);
+
+    dropIconLabel->setFixedWidth(42);
+
+    dropZoneLayout->addWidget(
+        dropIconLabel);
+
+    QVBoxLayout *dropTextLayout =
+        new QVBoxLayout();
+
+    dropTextLayout->setSpacing(2);
+
+    dropZoneTitleLabel =
+        new QLabel(
+            "Drag & drop a folder here");
+
+    dropZoneTitleLabel->setObjectName(
+        "dropZoneTitle");
+
+    dropZoneTitleLabel->setAlignment(
+        Qt::AlignLeft | Qt::AlignVCenter);
+
+    dropTextLayout->addWidget(
+        dropZoneTitleLabel);
+
+    dropZoneHintLabel =
+        new QLabel(
+            "Open File Explorer and drag the folder here");
+
+    dropZoneHintLabel->setObjectName(
+        "dropZoneHint");
+
+    dropZoneHintLabel->setAlignment(
+        Qt::AlignLeft | Qt::AlignVCenter);
+
+    dropTextLayout->addWidget(
+        dropZoneHintLabel);
+
+    dropZoneLayout->addLayout(
+        dropTextLayout,
+        1);
+
+    locationLayout->addWidget(
+        dropZone);
+
+    // -----------------------------------------------------
+    // SELECTED PATH
+    // -----------------------------------------------------
 
     folderEdit =
         new QLineEdit();
+
+    folderEdit->setObjectName(
+        "scanPathEdit");
 
     folderEdit->setSizePolicy(
         QSizePolicy::Expanding,
         QSizePolicy::Fixed);
 
-    folderEdit->setMinimumHeight(36);
+    folderEdit->setMinimumHeight(34);
 
     folderEdit->setPlaceholderText(
-        "Select a folder to scan...");
+        "Selected path will appear here...");
 
-    browseFolderButton =
-        new QPushButton("Browse Folder");
-
-    browseFolderButton->setObjectName(
-        "secondaryButton");
-
-    browseFolderButton->setMinimumHeight(36);
-
-    browseFolderButton->setMinimumWidth(130);
-
-    browseFolderButton->setSizePolicy(
-        QSizePolicy::Fixed,
-        QSizePolicy::Fixed);
-
-    folderLayout->addWidget(
-        folderEdit,
-        1);
-
-    folderLayout->addWidget(
-        browseFolderButton);
-
-    locationLayout->addLayout(
-        folderLayout);
+    locationLayout->addWidget(
+        folderEdit);
 
     connect(
         folderModeRadio,
@@ -517,28 +581,45 @@ MainWindow::MainWindow(QWidget *parent)
         {
             if (!folderMode)
             {
+                dropZoneTitleLabel->setText(
+                    "Drag & drop documents here");
+
+                dropZoneHintLabel->setText(
+                    "Open File Explorer and drag one or more documents here");
+
                 folderEdit->setPlaceholderText(
-                    "Select a document to scan...");
+                    "Selected documents will appear here...");
 
-                browseFolderButton->setText(
-                    "Browse File");
+                folderEdit->setReadOnly(true);
 
-                subfoldersCheckBox->setEnabled(
-                    false);
+                subfoldersCheckBox->setEnabled(false);
+                subfoldersCheckBox->setChecked(false);
 
-                subfoldersCheckBox->setChecked(
-                    false);
+                folderEdit->setText(
+                    selectedFiles.isEmpty()
+                        ? QString()
+                        : QString("%1 document%2 selected")
+                              .arg(selectedFiles.size())
+                              .arg(selectedFiles.size() == 1 ? "" : "s"));
             }
             else
             {
+                selectedFiles.clear();
+
+                dropZoneTitleLabel->setText(
+                    "Drag & drop a folder here");
+
+                dropZoneHintLabel->setText(
+                    "Open File Explorer and drag the folder here");
+
                 folderEdit->setPlaceholderText(
-                    "Select a folder to scan...");
+                    "Selected path will appear here...");
 
-                browseFolderButton->setText(
-                    "Browse Folder");
+                folderEdit->setReadOnly(false);
 
-                subfoldersCheckBox->setEnabled(
-                    true);
+                subfoldersCheckBox->setEnabled(true);
+
+                folderEdit->setText(QString());
             }
         });
 
@@ -863,7 +944,7 @@ MainWindow::MainWindow(QWidget *parent)
         QSizePolicy::Expanding,
         QSizePolicy::Expanding);
 
-    logCard->setMinimumHeight(220);
+    logCard->setMinimumHeight(170);
 
     QVBoxLayout *logLayout =
         new QVBoxLayout(logCard);
@@ -892,7 +973,7 @@ MainWindow::MainWindow(QWidget *parent)
     logTextEdit->setPlaceholderText(
         "Extraction activity will appear here...");
 
-    logTextEdit->setMinimumHeight(200);
+    logTextEdit->setMinimumHeight(150);
 
     logTextEdit->setSizePolicy(
         QSizePolicy::Expanding,
@@ -908,12 +989,6 @@ MainWindow::MainWindow(QWidget *parent)
     // =====================================================
     // CONNECTIONS
     // =====================================================
-
-    connect(
-        browseFolderButton,
-        &QPushButton::clicked,
-        this,
-        &MainWindow::browseFolder);
 
     connect(
         browseOutputButton,
@@ -967,8 +1042,14 @@ MainWindow::MainWindow(QWidget *parent)
     subfoldersCheckBox->setChecked(
         settings.value("includeSubfolders", true).toBool());
 
-    if (settings.value("singleFileMode", false).toBool())
+    const bool filesMode =
+        settings.contains("scanFilesMode")
+            ? settings.value("scanFilesMode").toBool()
+            : settings.value("singleFileMode", false).toBool();
+
+    if (filesMode)
     {
+        selectedFiles = settings.value("selectedFiles").toStringList();
         singleFileModeRadio->setChecked(true);
     }
 
@@ -985,13 +1066,10 @@ MainWindow::MainWindow(QWidget *parent)
         "Scan all supported documents in a folder.");
 
     singleFileModeRadio->setToolTip(
-        "Scan one document only.");
+        "Scan one or more individual documents.");
 
     folderEdit->setToolTip(
         "Folder or document selected for scanning.");
-
-    browseFolderButton->setToolTip(
-        "Choose the scan folder or document.");
 
     searchEdit->setToolTip(
         "Text is matched case-insensitively.");
@@ -1026,8 +1104,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     setTabOrder(folderModeRadio, singleFileModeRadio);
     setTabOrder(singleFileModeRadio, folderEdit);
-    setTabOrder(folderEdit, browseFolderButton);
-    setTabOrder(browseFolderButton, searchEdit);
     setTabOrder(searchEdit, outputEdit);
     setTabOrder(outputEdit, browseOutputButton);
     setTabOrder(browseOutputButton, wordCheckBox);
@@ -1062,6 +1138,21 @@ MainWindow::MainWindow(QWidget *parent)
 
     qApp->installEventFilter(this);
 
+    // Enable drag-and-drop events across the main window UI.
+    // The application-level event filter performs the actual
+    // validation and selection so drops behave consistently
+    // even when the cursor is over another child widget.
+    setAcceptDrops(true);
+    centralWidget->setAcceptDrops(true);
+
+    const QList<QWidget *> childWidgets =
+        findChildren<QWidget *>();
+
+    for (QWidget *widget : childWidgets)
+    {
+        widget->setAcceptDrops(true);
+    }
+
 }
 
 // =========================================================
@@ -1088,7 +1179,8 @@ MainWindow::~MainWindow()
     settings.setValue("scanText", textCheckBox->isChecked());
     settings.setValue("scanPdf", pdfCheckBox->isChecked());
     settings.setValue("includeSubfolders", subfoldersCheckBox->isChecked());
-    settings.setValue("singleFileMode", singleFileModeRadio->isChecked());
+    settings.setValue("scanFilesMode", singleFileModeRadio->isChecked());
+    settings.setValue("selectedFiles", selectedFiles);
     settings.setValue("windowPosition", pos());
 }
 
@@ -1102,8 +1194,7 @@ void MainWindow::setExtractionUiLocked(bool locked)
     singleFileModeRadio->setEnabled(!locked);
 
     folderEdit->setEnabled(!locked);
-    browseFolderButton->setEnabled(!locked);
-
+    dropZone->setEnabled(!locked);
     searchEdit->setEnabled(!locked);
     outputEdit->setEnabled(!locked);
     browseOutputButton->setEnabled(!locked);
@@ -1136,8 +1227,7 @@ void MainWindow::browseFolder()
 
         if (wordCheckBox->isChecked())
         {
-            filters << "*.doc"
-                    << "*.docx";
+            filters << "*.doc" << "*.docx";
         }
 
         if (textCheckBox->isChecked())
@@ -1150,50 +1240,60 @@ void MainWindow::browseFolder()
             filters << "*.pdf";
         }
 
-        QString filterText;
+        const QString filterText =
+            filters.isEmpty()
+                ? "Supported Documents (*.doc *.docx *.txt *.pdf);;All Files (*)"
+                : "Selected File Types (" + filters.join(' ') + ");;All Files (*)";
 
-        if (filters.isEmpty())
-        {
-            filterText =
-                "Supported Documents (*.doc *.docx *.txt *.pdf);;"
-                "Word Documents (*.doc *.docx);;"
-                "Text Files (*.txt);;"
-                "PDF Documents (*.pdf);;"
-                "All Files (*)";
-        }
-        else
-        {
-            filterText =
-                "Selected File Types (" +
-                filters.join(' ') +
-                ");;All Files (*)";
-        }
-
-        QString file =
-            QFileDialog::getOpenFileName(
+        const QStringList files =
+            QFileDialog::getOpenFileNames(
                 this,
-                "Select Document",
+                "Select Documents",
                 QString(),
                 filterText);
 
-        if (!file.isEmpty())
+        if (!files.isEmpty())
         {
+            for (const QString &file : files)
+            {
+                const QFileInfo info(file);
+
+                if (!info.isFile())
+                {
+                    continue;
+                }
+
+                const QString suffix = info.suffix().toLower();
+                const bool supported =
+                    suffix == "doc" || suffix == "docx" ||
+                    suffix == "txt" || suffix == "pdf";
+
+                if (supported && !selectedFiles.contains(info.absoluteFilePath()))
+                {
+                    selectedFiles.append(info.absoluteFilePath());
+                }
+            }
+
             folderEdit->setText(
-                file);
+                QString("%1 document%2 selected")
+                    .arg(selectedFiles.size())
+                    .arg(selectedFiles.size() == 1 ? "" : "s"));
+
+            updateStatus("Documents selected");
         }
 
         return;
     }
 
-    QString folder =
+    const QString folder =
         QFileDialog::getExistingDirectory(
             this,
             "Select Folder");
 
     if (!folder.isEmpty())
     {
-        folderEdit->setText(
-            folder);
+        selectedFiles.clear();
+        folderEdit->setText(folder);
     }
 }
 
@@ -1259,112 +1359,96 @@ void MainWindow::startExtraction()
     bool includeSubfolders =
         subfoldersCheckBox->isChecked();
 
-    const ScanMode scanMode =
-        (singleFileModeRadio &&
-         singleFileModeRadio->isChecked())
-            ? ScanMode::SingleFile
-            : ScanMode::Folder;
+    const bool filesMode =
+        singleFileModeRadio &&
+        singleFileModeRadio->isChecked();
+
+    const QStringList filesToScan =
+        selectedFiles;
 
     // =====================================================
     // VALIDATION
     // =====================================================
 
-    if (folderPath.isEmpty())
+    if (filesMode)
     {
-        QMessageBox::warning(
-            this,
-            scanMode == ScanMode::SingleFile
-                ? "Missing Document"
-                : "Missing Scan Folder",
-            scanMode == ScanMode::SingleFile
-                ? "Please select a document to scan.\n\n"
-                  "Supported formats: DOC, DOCX, TXT, PDF."
-                : "Please select a folder to scan.");
-
-        return;
-    }
-
-    // =====================================================
-    // SCAN LOCATION VALIDATION
-    // =====================================================
-
-    const QFileInfo scanInfo(folderPath);
-
-    if (!scanInfo.exists())
-    {
-        QMessageBox::warning(
-            this,
-            scanMode == ScanMode::SingleFile
-                ? "File Not Found"
-                : "Folder Not Found",
-            scanMode == ScanMode::SingleFile
-                ? "The selected file does not exist.\n\n"
-                  "Please choose a valid document."
-                : "The selected input folder does not exist.\n\n"
-                  "Please choose a valid folder.");
-
-        return;
-    }
-
-    if (scanMode == ScanMode::SingleFile)
-    {
-        if (!scanInfo.isFile())
+        if (filesToScan.isEmpty())
         {
             QMessageBox::warning(
                 this,
-                "Invalid Input File",
-                "The selected scan location is not a file.\n\n"
-                "Please choose a document.");
+                "No Documents Selected",
+                "Please drag one or more documents into the scan area.\n\n"
+                "Supported formats: DOC, DOCX, TXT, PDF.");
 
             return;
         }
 
-        if (!scanInfo.isReadable())
+        for (const QString &path : filesToScan)
         {
-            QMessageBox::warning(
-                this,
-                "File Not Accessible",
-                "The selected file cannot be read.\n\n"
-                "Please choose a file you have permission to access.");
+            const QFileInfo info(path);
 
-            return;
-        }
+            if (!info.exists() || !info.isFile() || !info.isReadable())
+            {
+                QMessageBox::warning(
+                    this,
+                    "Document Not Accessible",
+                    QString("The selected document cannot be read:\n\n%1")
+                        .arg(path));
+                return;
+            }
 
-        const QString extension =
-            scanInfo.suffix().toLower();
+            const QString extension = info.suffix().toLower();
+            const bool supported =
+                extension == "doc" || extension == "docx" ||
+                extension == "txt" || extension == "pdf";
 
-        const bool supported =
-            (extension == "doc" || extension == "docx")
-                ? scanWord
-                : (extension == "txt")
-                    ? scanText
-                    : (extension == "pdf")
-                        ? scanPdf
-                        : false;
+            if (!supported)
+            {
+                QMessageBox::warning(
+                    this,
+                    "Unsupported Document",
+                    QString("This file type is not supported:\n\n%1")
+                        .arg(path));
+                return;
+            }
 
-        if (!supported)
-        {
-            QMessageBox::warning(
-                this,
-                "File Type Not Selected",
-                "The selected file type is not enabled in Options.\n\n"
-                "Please enable the corresponding file type and try again.");
+            const bool typeEnabled =
+                ((extension == "doc" || extension == "docx") && scanWord) ||
+                (extension == "txt" && scanText) ||
+                (extension == "pdf" && scanPdf);
 
-            return;
+            if (!typeEnabled)
+            {
+                QMessageBox::warning(
+                    this,
+                    "File Type Not Selected",
+                    QString("The selected file type is not enabled in Options:\n\n%1")
+                        .arg(path));
+                return;
+            }
         }
 
         includeSubfolders = false;
     }
     else
     {
-        if (!scanInfo.isDir())
+        if (folderPath.isEmpty())
+        {
+            QMessageBox::warning(
+                this,
+                "Missing Scan Folder",
+                "Please select a folder to scan.");
+            return;
+        }
+
+        const QFileInfo scanInfo(folderPath);
+
+        if (!scanInfo.exists() || !scanInfo.isDir())
         {
             QMessageBox::warning(
                 this,
                 "Invalid Input Folder",
-                "The selected input path is not a folder.\n\n"
-                "Please choose a valid folder.");
-
+                "The selected input path is not a valid folder.");
             return;
         }
 
@@ -1375,7 +1459,6 @@ void MainWindow::startExtraction()
                 "Folder Not Accessible",
                 "The selected input folder cannot be read.\n\n"
                 "Please choose a folder you have permission to access.");
-
             return;
         }
     }
@@ -1654,17 +1737,19 @@ void MainWindow::startExtraction()
          scanText,
          scanPdf,
          includeSubfolders,
-         scanMode]()
+         filesToScan,
+         filesMode]()
         {
             worker->process(
                 folderPath,
+                filesToScan,
                 searchText,
                 outputFilePath,
                 scanWord,
                 scanText,
                 scanPdf,
                 includeSubfolders,
-                scanMode);
+                filesMode);
         });
 
     // =====================================================
@@ -1714,7 +1799,193 @@ bool MainWindow::eventFilter(
     QObject *watched,
     QEvent *event)
 {
-    Q_UNUSED(watched);
+    if (QApplication::activeWindow() == this &&
+        QApplication::activeModalWidget() == nullptr &&
+        !startButton->isEnabled())
+    {
+        return QMainWindow::eventFilter(
+            watched,
+            event);
+    }
+
+    QWidget *watchedWidget =
+        watched->isWidgetType()
+            ? static_cast<QWidget *>(watched)
+            : nullptr;
+
+    const bool isDropZoneWidget =
+        watchedWidget != nullptr &&
+        (watchedWidget == dropZone ||
+         dropZone->isAncestorOf(watchedWidget));
+
+    if (isDropZoneWidget &&
+        (event->type() == QEvent::DragEnter ||
+         event->type() == QEvent::DragMove))
+    {
+        QDropEvent *dropEvent =
+            static_cast<QDropEvent *>(event);
+
+        if (dropEvent->mimeData()->hasUrls() &&
+            !dropEvent->mimeData()->urls().isEmpty())
+        {
+            dropEvent->acceptProposedAction();
+
+            if (event->type() == QEvent::DragEnter)
+            {
+                dropZone->setProperty("dropActive", true);
+                dropZone->style()->unpolish(dropZone);
+                dropZone->style()->polish(dropZone);
+                dropZone->update();
+            }
+
+            return true;
+        }
+
+        dropEvent->ignore();
+        return true;
+    }
+
+    if (isDropZoneWidget &&
+        event->type() == QEvent::DragLeave)
+    {
+        dropZone->setProperty("dropActive", false);
+        dropZone->style()->unpolish(dropZone);
+        dropZone->style()->polish(dropZone);
+        dropZone->update();
+        return true;
+    }
+
+    if (isDropZoneWidget &&
+        event->type() == QEvent::Drop)
+    {
+        QDropEvent *dropEvent =
+            static_cast<QDropEvent *>(event);
+
+        dropZone->setProperty("dropActive", false);
+        dropZone->style()->unpolish(dropZone);
+        dropZone->style()->polish(dropZone);
+        dropZone->update();
+
+        const QList<QUrl> urls =
+            dropEvent->mimeData()->urls();
+
+        const bool filesMode =
+            singleFileModeRadio->isChecked();
+
+        if (urls.isEmpty())
+        {
+            dropEvent->ignore();
+            return true;
+        }
+
+        if (!filesMode)
+        {
+            if (urls.size() != 1 || !urls.first().isLocalFile())
+            {
+                QMessageBox::warning(
+                    this,
+                    "Invalid Drop",
+                    "Please drop exactly one local folder.");
+                dropEvent->ignore();
+                return true;
+            }
+
+            const QFileInfo info(urls.first().toLocalFile());
+
+            if (!info.exists() || !info.isDir())
+            {
+                QMessageBox::warning(
+                    this,
+                    "Invalid Scan Location",
+                    "Folder mode requires a folder.\n\n"
+                    "Switch to Files mode if you want to scan individual documents.");
+                dropEvent->ignore();
+                return true;
+            }
+
+            selectedFiles.clear();
+            folderEdit->setText(
+                QDir::toNativeSeparators(info.absoluteFilePath()));
+
+            updateStatus("Folder selected via drag & drop");
+            appendLog("Selected folder: " + info.absoluteFilePath());
+            dropEvent->acceptProposedAction();
+            return true;
+        }
+
+        int added = 0;
+        int duplicates = 0;
+        int rejected = 0;
+        QStringList rejectedPaths;
+
+        for (const QUrl &url : urls)
+        {
+            if (!url.isLocalFile())
+            {
+                ++rejected;
+                continue;
+            }
+
+            const QFileInfo info(url.toLocalFile());
+
+            if (!info.exists() || !info.isFile())
+            {
+                ++rejected;
+                continue;
+            }
+
+            const QString suffix = info.suffix().toLower();
+            const bool supported =
+                suffix == "doc" || suffix == "docx" ||
+                suffix == "txt" || suffix == "pdf";
+
+            if (!supported)
+            {
+                ++rejected;
+                rejectedPaths.append(info.fileName());
+                continue;
+            }
+
+            const QString absolutePath = info.absoluteFilePath();
+
+            if (selectedFiles.contains(absolutePath))
+            {
+                ++duplicates;
+                continue;
+            }
+
+            selectedFiles.append(absolutePath);
+            ++added;
+            appendLog("Added document: " + absolutePath);
+        }
+
+        if (added > 0 || !selectedFiles.isEmpty())
+        {
+            folderEdit->setText(
+                QString("%1 document%2 selected")
+                    .arg(selectedFiles.size())
+                    .arg(selectedFiles.size() == 1 ? "" : "s"));
+
+            updateStatus(
+                QString("%1 document%2 selected")
+                    .arg(selectedFiles.size())
+                    .arg(selectedFiles.size() == 1 ? "" : "s"));
+        }
+
+        if (rejected > 0)
+        {
+            QMessageBox::warning(
+                this,
+                "Some Items Were Skipped",
+                QString("%1 item%2 could not be added because only DOC, DOCX, TXT and PDF files are supported.")
+                    .arg(rejected)
+                    .arg(rejected == 1 ? "" : "s"));
+        }
+
+        Q_UNUSED(duplicates);
+        dropEvent->acceptProposedAction();
+        return true;
+    }
 
     if (event->type() != QEvent::KeyPress)
     {
@@ -1740,7 +2011,7 @@ bool MainWindow::eventFilter(
     const Qt::KeyboardModifiers modifiers =
         keyEvent->modifiers();
 
-    // Ctrl + O -> Browse input folder
+    // Ctrl + O -> Choose scan location
     if (key == Qt::Key_O &&
         (modifiers & Qt::ControlModifier) &&
         !(modifiers & Qt::ShiftModifier))
@@ -1758,6 +2029,7 @@ bool MainWindow::eventFilter(
         return true;
     }
 
+    // Ctrl + Enter -> Start extraction
     if ((key == Qt::Key_Return ||
          key == Qt::Key_Enter) &&
         (modifiers & Qt::ControlModifier))
@@ -1766,6 +2038,7 @@ bool MainWindow::eventFilter(
         return true;
     }
 
+    // Escape -> Cancel extraction
     if (key == Qt::Key_Escape)
     {
         cancelExtraction();
@@ -1776,8 +2049,6 @@ bool MainWindow::eventFilter(
         watched,
         event);
 }
-
-// =========================================================
 
 void MainWindow::cancelExtraction()
 {
@@ -1908,7 +2179,7 @@ void MainWindow::extractionFinished(
     dialog.setWindowTitle("Extraction Complete");
     dialog.setWindowIcon(
         QIcon(":/DocumentExtractor_256.png"));
-    dialog.setFixedSize(640, 470);
+    dialog.setFixedSize(640, 620);
 
     QVBoxLayout *layout =
         new QVBoxLayout(&dialog);
@@ -1985,6 +2256,7 @@ void MainWindow::extractionFinished(
         "completionSubtitleLabel");
 
     subtitleLabel->setWordWrap(true);
+    subtitleLabel->setMinimumHeight(40);
     subtitleLabel->setAlignment(
         Qt::AlignCenter);
 
@@ -2004,6 +2276,9 @@ void MainWindow::extractionFinished(
 
     statsLayout->setHorizontalSpacing(18);
     statsLayout->setVerticalSpacing(10);
+
+    statsCard->setMinimumHeight(160);
+    statsCard->setMaximumHeight(160);
 
     auto addStat =
         [statsLayout](
@@ -2063,6 +2338,7 @@ void MainWindow::extractionFinished(
             "completionFailedList");
 
         failedEdit->setReadOnly(true);
+        failedEdit->setMinimumHeight(90);
         failedEdit->setMaximumHeight(90);
 
         for (const QString &path : failedFilePaths)
@@ -2213,7 +2489,7 @@ void MainWindow::extractionCancelled(
 
     dialog.setFixedSize(
         560,
-        failedFilePaths.isEmpty() ? 410 : 500);
+        failedFilePaths.isEmpty() ? 500 : 620);
 
     QVBoxLayout *layout =
         new QVBoxLayout(&dialog);
@@ -2267,6 +2543,7 @@ void MainWindow::extractionCancelled(
         "completionSubtitleLabel");
 
     subtitleLabel->setWordWrap(true);
+    subtitleLabel->setMinimumHeight(40);
 
     subtitleLabel->setAlignment(
         Qt::AlignCenter);
@@ -2288,6 +2565,9 @@ void MainWindow::extractionCancelled(
 
     statsLayout->setHorizontalSpacing(18);
     statsLayout->setVerticalSpacing(10);
+
+    statsCard->setMinimumHeight(160);
+    statsCard->setMaximumHeight(160);
 
     auto addStat =
         [statsLayout](
@@ -2348,6 +2628,7 @@ void MainWindow::extractionCancelled(
             "completionFailedList");
 
         failedEdit->setReadOnly(true);
+        failedEdit->setMinimumHeight(90);
         failedEdit->setMaximumHeight(90);
 
         for (const QString &path : failedFilePaths)

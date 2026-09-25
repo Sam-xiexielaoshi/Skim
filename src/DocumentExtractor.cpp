@@ -37,40 +37,62 @@ void DocumentExtractorWorker::cancel()
 
 void DocumentExtractorWorker::process(
     const QString &folderPath,
+    const QStringList &selectedFiles,
     const QString &searchText,
     const QString &outputFilePath,
     bool scanWord,
     bool scanText,
     bool scanPdf,
     bool includeSubfolders,
-    ScanMode scanMode)
+    bool filesMode)
 {
     m_cancelRequested.storeRelease(0);
 
+    int filesFound = 0;
     int filesScanned = 0;
     int matchesFound = 0;
     int emptyFiles = 0;
     int failedFiles = 0;
 
     QStringList failedFilePaths;
+    QStringList filesToProcess;
 
     // =====================================================
     // VALIDATION
     // =====================================================
 
-    if (folderPath.isEmpty())
+    if (filesMode)
     {
-        emit errorOccurred(
-            "Input folder is empty.");
+        if (selectedFiles.isEmpty())
+        {
+            emit errorOccurred(
+                "No documents were selected.");
+            return;
+        }
+    }
+    else
+    {
+        if (folderPath.isEmpty())
+        {
+            emit errorOccurred(
+                "Input folder is empty.");
+            return;
+        }
 
-        return;
+        QDir inputDir(folderPath);
+
+        if (!inputDir.exists())
+        {
+            emit errorOccurred(
+                "Input folder does not exist.");
+            return;
+        }
     }
 
     if (searchText.isEmpty())
     {
         emit errorOccurred(
             "Search text is empty.");
-
         return;
     }
 
@@ -78,53 +100,17 @@ void DocumentExtractorWorker::process(
     {
         emit errorOccurred(
             "Please select at least one file type.");
-
         return;
-    }
-
-    QFileInfo scanInfo(folderPath);
-
-    if (!scanInfo.exists())
-    {
-        emit errorOccurred(
-            scanMode == ScanMode::SingleFile
-                ? "Input file does not exist."
-                : "Input folder does not exist.");
-
-        return;
-    }
-
-    if (scanMode == ScanMode::SingleFile)
-    {
-        if (!scanInfo.isFile())
-        {
-            emit errorOccurred(
-                "The selected scan location is not a file.");
-
-            return;
-        }
-    }
-    else
-    {
-        if (!scanInfo.isDir())
-        {
-            emit errorOccurred(
-                "The selected scan location is not a folder.");
-
-            return;
-        }
     }
 
     // =====================================================
     // OUTPUT FILE
     // =====================================================
 
-    QString absoluteOutputPath =
-        QFileInfo(outputFilePath)
-            .absoluteFilePath();
+    const QString absoluteOutputPath =
+        QFileInfo(outputFilePath).absoluteFilePath();
 
-    QFile outputFile(
-        absoluteOutputPath);
+    QFile outputFile(absoluteOutputPath);
 
     if (!outputFile.open(
             QIODevice::WriteOnly |
@@ -133,63 +119,56 @@ void DocumentExtractorWorker::process(
         emit errorOccurred(
             "Could not open output file:\n" +
             outputFile.errorString());
-
         return;
     }
 
-    QTextStream output(
-        &outputFile);
-
-    output.setEncoding(
-        QStringConverter::Utf8);
+    QTextStream output(&outputFile);
+    output.setEncoding(QStringConverter::Utf8);
 
     // =====================================================
-    // FILE FILTERS
+    // BUILD FILE LIST
     // =====================================================
 
     QStringList filters;
 
     if (scanWord)
     {
-        filters << "*.doc"
-                << "*.docx";
+        filters << "*.doc" << "*.docx";
     }
 
     if (scanText)
     {
         filters << "*.txt";
     }
+
     if (scanPdf)
     {
         filters << "*.pdf";
     }
 
-    // =====================================================
-    // BUILD FILE LIST
-    // =====================================================
-
-    QStringList files;
-
-    if (scanMode == ScanMode::SingleFile)
+    if (filesMode)
     {
-        const QString extension =
-            scanInfo.suffix().toLower();
-
-        const bool supported =
-            (extension == "doc" || extension == "docx")
-                ? scanWord
-            : (extension == "txt")
-                ? scanText
-            : (extension == "pdf")
-                ? scanPdf
-                : false;
-
-        if (supported &&
-            scanInfo.absoluteFilePath() !=
-                absoluteOutputPath)
+        for (const QString &path : selectedFiles)
         {
-            files.append(
-                scanInfo.absoluteFilePath());
+            const QFileInfo info(path);
+
+            if (!info.exists() || !info.isFile())
+            {
+                continue;
+            }
+
+            const QString absolutePath =
+                info.absoluteFilePath();
+
+            if (absolutePath == absoluteOutputPath)
+            {
+                continue;
+            }
+
+            if (!filesToProcess.contains(absolutePath))
+            {
+                filesToProcess.append(absolutePath);
+            }
         }
     }
     else
@@ -197,32 +176,26 @@ void DocumentExtractorWorker::process(
         QDirIterator counter(
             folderPath,
             filters,
-            QDir::Files |
-                QDir::NoSymLinks,
+            QDir::Files | QDir::NoSymLinks,
             includeSubfolders
                 ? QDirIterator::Subdirectories
                 : QDirIterator::NoIteratorFlags);
 
         while (counter.hasNext())
         {
-            const QString path =
-                counter.next();
-
+            const QString path = counter.next();
             const QFileInfo info(path);
 
-            if (info.absoluteFilePath() ==
-                absoluteOutputPath)
+            if (info.absoluteFilePath() == absoluteOutputPath)
             {
                 continue;
             }
 
-            files.append(
-                info.absoluteFilePath());
+            filesToProcess.append(info.absoluteFilePath());
         }
     }
 
-    const int filesFound =
-        files.size();
+    filesFound = filesToProcess.size();
 
     // =====================================================
     // NOTHING TO SCAN
@@ -233,15 +206,8 @@ void DocumentExtractorWorker::process(
         outputFile.close();
 
         emit progressChanged(100);
-
         emit finished(
-            0,
-            0,
-            0,
-            0,
-            0,
-            QStringList());
-
+            0, 0, 0, 0, 0, QStringList());
         return;
     }
 
@@ -256,27 +222,19 @@ void DocumentExtractorWorker::process(
         emit statusChanged(
             "Starting Microsoft Word...");
 
-        word =
-            new QAxObject(
-                "Word.Application");
+        word = new QAxObject("Word.Application");
 
         if (word->isNull())
         {
             delete word;
-
             word = nullptr;
 
             emit errorOccurred(
                 "Could not start Microsoft Word.");
 
             outputFile.close();
-
             return;
         }
-
-        // -------------------------------------------------
-        // WORD COM EXCEPTION HANDLER
-        // -------------------------------------------------
 
         connect(
             word,
@@ -298,223 +256,127 @@ void DocumentExtractorWorker::process(
                         .arg(description));
             });
 
-        word->setProperty(
-            "Visible",
-            false);
-
-        word->setProperty(
-            "DisplayAlerts",
-            false);
+        word->setProperty("Visible", false);
+        word->setProperty("DisplayAlerts", false);
     }
 
     // =====================================================
-    // SECOND PASS
-    //
-    // Actual extraction.
+    // PROCESS FILES
     // =====================================================
-
-    int currentFile = 0;
 
     bool wasCancelled = false;
 
-    for (const QString &filePath : files)
+    for (const QString &filePath : filesToProcess)
     {
-        // -------------------------------------------------
-        // CHECK CANCELLATION
-        // -------------------------------------------------
-
-        if (
-            m_cancelRequested
-                .loadAcquire())
+        if (m_cancelRequested.loadAcquire())
         {
             wasCancelled = true;
-
             break;
         }
 
-        emit logMessage(
-            "Scanning: " + filePath);
+        emit logMessage("Scanning: " + filePath);
 
-        QFileInfo fileInfo(
-            filePath);
+        const QFileInfo fileInfo(filePath);
+        ++filesScanned;
 
-        // -------------------------------------------------
-        // NEVER SCAN OUTPUT FILE
-        // -------------------------------------------------
-
-        if (
-            fileInfo.absoluteFilePath() ==
-            absoluteOutputPath)
-        {
-            continue;
-        }
-
-        currentFile++;
-
-        // -------------------------------------------------
-        // PROGRESS
-        // -------------------------------------------------
-
-        int progress =
+        const int progress =
             static_cast<int>(
-                (
-                    static_cast<double>(
-                        currentFile) /
-                    static_cast<double>(
-                        filesFound)) *
+                (static_cast<double>(filesScanned) /
+                 static_cast<double>(filesFound)) *
                 100.0);
 
-        emit progressChanged(
-            progress);
-
+        emit progressChanged(progress);
         emit progressInfoChanged(
-            currentFile,
+            filesScanned,
             filesFound,
             matchesFound);
 
-        // -------------------------------------------------
-        // EMPTY FILE
-        // -------------------------------------------------
-
         if (fileInfo.size() == 0)
         {
-            emptyFiles++;
+            ++emptyFiles;
 
             emit statusChanged(
-                QString(
-                    "Skipping empty file: %1")
-                    .arg(
-                        fileInfo.fileName()));
+                QString("Skipping empty file: %1")
+                    .arg(fileInfo.fileName()));
 
             emit logMessage(
-                QString(
-                    "Skipped empty file: %1")
-                    .arg(
-                        filePath));
+                QString("Skipped empty file: %1")
+                    .arg(filePath));
 
             continue;
         }
 
-        // -------------------------------------------------
-        // STATUS
-        // -------------------------------------------------
-
         emit statusChanged(
-            QString(
-                "Scanning %1 / %2: %3")
-                .arg(currentFile)
+            QString("Scanning %1 / %2: %3")
+                .arg(filesScanned)
                 .arg(filesFound)
                 .arg(fileInfo.fileName()));
 
-        QString extension =
-            fileInfo
-                .suffix()
-                .toLower();
+        const QString extension =
+            fileInfo.suffix().toLower();
 
         bool success = false;
-
-        int matchesBefore =
-            matchesFound;
-
-        // -------------------------------------------------
-        // TEXT
-        // -------------------------------------------------
+        const int matchesBefore = matchesFound;
 
         if (extension == "txt")
         {
-            success =
-                processTextFile(
-                    filePath,
-                    searchText,
-                    output,
-                    matchesFound);
+            success = processTextFile(
+                filePath,
+                searchText,
+                output,
+                matchesFound);
         }
-
-        // -------------------------------------------------
-        // WORD
-        // -------------------------------------------------
-
-        else if (
-            extension == "doc" ||
-            extension == "docx")
+        else if (extension == "doc" || extension == "docx")
         {
-            success =
-                processWordFile(
-                    word,
-                    filePath,
-                    searchText,
-                    output,
-                    matchesFound);
+            success = processWordFile(
+                word,
+                filePath,
+                searchText,
+                output,
+                matchesFound);
         }
         else if (extension == "pdf")
         {
-            success =
-                processPdfFile(
-                    filePath,
-                    searchText,
-                    output,
-                    matchesFound);
+            success = processPdfFile(
+                filePath,
+                searchText,
+                output,
+                matchesFound);
         }
-
-        filesScanned++;
 
         emit progressInfoChanged(
             filesScanned,
             filesFound,
             matchesFound);
 
-        // -------------------------------------------------
-        // FAILED FILE
-        // -------------------------------------------------
-
         if (!success)
         {
-            failedFiles++;
-
-            failedFilePaths.append(
-                filePath);
+            ++failedFiles;
+            failedFilePaths.append(filePath);
 
             emit statusChanged(
-                QString(
-                    "FAILED: %1")
-                    .arg(
-                        fileInfo.fileName()));
+                QString("FAILED: %1")
+                    .arg(fileInfo.fileName()));
 
             emit logMessage(
-                QString(
-                    "FAILED: %1")
-                    .arg(
-                        filePath));
+                QString("FAILED: %1")
+                    .arg(filePath));
         }
         else
         {
-            int fileMatches =
+            const int fileMatches =
                 matchesFound - matchesBefore;
 
             emit logMessage(
-                QString(
-                    "Completed: %1 — %2 match%3")
-                    .arg(
-                        filePath)
-                    .arg(
-                        fileMatches)
-                    .arg(
-                        fileMatches == 1 ? "" : "es"));
+                QString("Completed: %1 — %2 match%3")
+                    .arg(filePath)
+                    .arg(fileMatches)
+                    .arg(fileMatches == 1 ? "" : "es"));
         }
 
-        // -------------------------------------------------
-        // CHECK CANCELLATION AGAIN
-        //
-        // This catches cancellation that happened while
-        // the current file was being processed.
-        // -------------------------------------------------
-
-        if (
-            m_cancelRequested
-                .loadAcquire())
+        if (m_cancelRequested.loadAcquire())
         {
             wasCancelled = true;
-
             break;
         }
     }
@@ -528,11 +390,8 @@ void DocumentExtractorWorker::process(
         emit statusChanged(
             "Closing Microsoft Word...");
 
-        word->dynamicCall(
-            "Quit()");
-
+        word->dynamicCall("Quit()");
         delete word;
-
         word = nullptr;
     }
 
@@ -540,77 +399,39 @@ void DocumentExtractorWorker::process(
     // OUTPUT SUMMARY
     // =====================================================
 
-    output
-        << "\n\n"
-        << "=======================================\n";
+    output << "\n\n"
+           << "=======================================\n";
 
     if (wasCancelled)
     {
-        output
-            << "EXTRACTION CANCELLED\n";
+        output << "EXTRACTION CANCELLED\n";
     }
     else
     {
-        output
-            << "EXTRACTION SUMMARY\n";
+        output << "EXTRACTION SUMMARY\n";
     }
 
-    output
-        << "=======================================\n\n";
-
-    output
-        << "Files found: "
-        << filesFound
-        << "\n";
-
-    output
-        << "Files scanned: "
-        << filesScanned
-        << "\n";
-
-    output
-        << "Matches found: "
-        << matchesFound
-        << "\n";
-
-    output
-        << "Empty files: "
-        << emptyFiles
-        << "\n";
-
-    output
-        << "Failed files: "
-        << failedFiles
-        << "\n";
-
-    // =====================================================
-    // FAILED FILE LIST
-    // =====================================================
+    output << "=======================================\n\n";
+    output << "Files found: " << filesFound << "\n";
+    output << "Files scanned: " << filesScanned << "\n";
+    output << "Matches found: " << matchesFound << "\n";
+    output << "Empty files: " << emptyFiles << "\n";
+    output << "Failed files: " << failedFiles << "\n";
 
     if (!failedFilePaths.isEmpty())
     {
-        output
-            << "\n"
-            << "FAILED FILES\n"
-            << "---------------------------------------\n";
+        output << "\n"
+               << "FAILED FILES\n"
+               << "---------------------------------------\n";
 
-        for (
-            const QString &failedPath :
-            failedFilePaths)
+        for (const QString &failedPath : failedFilePaths)
         {
-            output
-                << failedPath
-                << "\n";
+            output << failedPath << "\n";
         }
     }
 
     output.flush();
-
     outputFile.close();
-
-    // =====================================================
-    // FINAL SIGNAL
-    // =====================================================
 
     if (wasCancelled)
     {
@@ -636,7 +457,7 @@ void DocumentExtractorWorker::process(
     }
 }
 
-// =========================================================
+
 // TEXT FILE PROCESSING
 // =========================================================
 

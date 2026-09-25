@@ -496,3 +496,63 @@ QRadioButton::indicator:disabled {
     background-color: #f0f1f3;
     border: 1px solid #d9dde3;
 }
+
+/* =========================================================
+   DOCUMENT SCAN DROP ZONE
+   ========================================================= */
+
+#dropZone {
+    background-color: #f8fafc;
+    border: 1px dashed #b8c1ce;
+    border-radius: 10px;
+}
+
+#dropZone:hover {
+    background-color: #f7faff;
+    border: 1px dashed #94a3b8;
+}
+
+#dropZone[dropActive="true"] {
+    background-color: #eff6ff;
+    border: 2px dashed #2563eb;
+}
+
+#dropZone:disabled {
+    background-color: #f4f5f7;
+    border: 1px dashed #d5d9df;
+}
+
+#dropZoneIcon {
+    color: #2563eb;
+    font-size: 30px;
+    font-weight: 700;
+}
+
+#dropZoneTitle {
+    color: #1f2937;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#dropZoneHint {
+    color: #7b8794;
+    font-size: 12px;
+}
+
+#scanPathEdit {
+    background-color: #ffffff;
+    color: #4b5563;
+    border: 1px solid #d5dbe4;
+    border-radius: 7px;
+    padding: 6px 11px;
+    font-size: 12px;
+}
+
+#scanPathEdit:focus {
+    border: 1px solid #3b82f6;
+}
+
+#scanPathEdit:disabled {
+    background-color: #f1f3f5;
+    color: #9aa1ac;
+}
